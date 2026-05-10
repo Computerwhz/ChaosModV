@@ -8,6 +8,7 @@ namespace ConfigApp.Tabs.Settings
         private CheckBox? m_EnableToggleModShortcut = null;
         private CheckBox? m_EnableClearActiveEffectsShortcut = null;
         private CheckBox? m_EnablePauseTimerShortcut = null;
+        private CheckBox? m_EnablePauseChannelPointsShortcut = null;
         private CheckBox? m_EnableEffectsMenu = null;
         private CheckBox? m_EnableAntiSoftlockShortcut = null;
 
@@ -31,6 +32,9 @@ namespace ConfigApp.Tabs.Settings
             grid.PopRow();
 
             grid.PushRowSpacedPair("Enable pause timer shortcut (CTRL + .)", m_EnablePauseTimerShortcut = Utils.GenerateCommonCheckBox());
+            grid.PushRowSpacedPair("Enable pause Twitch channel points shortcut (CTRL + /)", m_EnablePauseChannelPointsShortcut = Utils.GenerateCommonCheckBox());
+            grid.PopRow();
+
             grid.PushRowSpacedPair("Enable effects menu (allows you to choose effects manually, CTRL + ,)", m_EnableEffectsMenu = Utils.GenerateCommonCheckBox());
             grid.PopRow();
 
@@ -51,6 +55,8 @@ namespace ConfigApp.Tabs.Settings
                 m_EnableClearActiveEffectsShortcut.IsChecked = OptionsManager.ConfigFile.ReadValue("EnableClearEffectsShortcut", true);
             if (m_EnablePauseTimerShortcut is not null)
                 m_EnablePauseTimerShortcut.IsChecked = OptionsManager.ConfigFile.ReadValue("EnablePauseTimerShortcut", false);
+            if (m_EnablePauseChannelPointsShortcut is not null)
+                m_EnablePauseChannelPointsShortcut.IsChecked = OptionsManager.ConfigFile.ReadValue("EnablePauseChannelPointsShortcut", false);
             if (m_EnableEffectsMenu is not null)
                 m_EnableEffectsMenu.IsChecked = OptionsManager.ConfigFile.ReadValue("EnableDebugMenu", false);
             if (m_EnableAntiSoftlockShortcut is not null)
@@ -63,6 +69,7 @@ namespace ConfigApp.Tabs.Settings
             OptionsManager.ConfigFile.WriteValue("EnableClearEffectsShortcut", m_EnableClearActiveEffectsShortcut?.IsChecked);
             OptionsManager.ConfigFile.WriteValue("EnableDebugMenu", m_EnableEffectsMenu?.IsChecked);
             OptionsManager.ConfigFile.WriteValue("EnablePauseTimerShortcut", m_EnablePauseTimerShortcut?.IsChecked);
+            OptionsManager.ConfigFile.WriteValue("EnablePauseChannelPointsShortcut", m_EnablePauseChannelPointsShortcut?.IsChecked);
             OptionsManager.ConfigFile.WriteValue("EnableAntiSoftlockShortcut", m_EnableAntiSoftlockShortcut?.IsChecked);
         }
     }

@@ -67,6 +67,7 @@ namespace TwitchChatVotingProxy.VotingReceiver
             m_Client.Initialize(new ConnectionCredentials(m_UserName, m_OAuth), m_ChannelName);
 
             m_Client.OnConnected += OnConnected;
+            m_Client.OnDisconnected += OnDisconnect;
             m_Client.OnError += OnError;
             m_Client.OnIncorrectLogin += OnIncorrectLogin;
             m_Client.OnFailureToReceiveJoinConfirmation += OnFailureToReceiveJoinConfirmation;
@@ -113,7 +114,7 @@ namespace TwitchChatVotingProxy.VotingReceiver
         /// <summary>
         /// Called when the twitch client disconnects (callback)
         /// </summary>
-        private async void OnDisconnect(object? sender, OnDisconnectedArgs e)
+        private async void OnDisconnect(object? sender, OnDisconnectedEventArgs e)
         {
             m_Logger.Error("Disconnected from the twitch channel, trying to reconnect");
             await Task.Delay(RECONNECT_INTERVAL);

@@ -36,6 +36,28 @@ namespace TwitchChatVotingProxy
             }
         }
 
+        private static async Task InitChannelPointsReceiver(TwitchChannelPointsReceiver? channelPointsReceiver, CancellationTokenSource tokenSource)
+        {
+            if (channelPointsReceiver == null)
+                return;
+
+            m_Logger.Information("Initializing Twitch channel points");
+
+            try
+            {
+                if (!await channelPointsReceiver.Init())
+                {
+                    m_Logger.Fatal("Failed to initialize Twitch channel points");
+                    tokenSource.Cancel();
+                }
+            }
+            catch (Exception exception)
+            {
+                m_Logger.Fatal(exception, "Failed to initialize Twitch channel points");
+                tokenSource.Cancel();
+            }
+        }
+
         private static async Task Main(string[] args)
         {
             if (args.Length < 1 || args[0] != "--startProxy")
@@ -86,42 +108,97 @@ namespace TwitchChatVotingProxy
                 votingReceivers.Add(("Twitch", new TwitchVotingReceiver(config, chaosPipe)));
             if (config.ReadValue("EnableVotingDiscord", false))
                 votingReceivers.Add(("Discord", new DiscordVotingReceiver(config, chaosPipe)));
+            TwitchChannelPointsReceiver? channelPointsReceiver = null;
+            if (config.ReadValue("EnableTwitchChannelPoints", false))
+                channelPointsReceiver = new TwitchChannelPointsReceiver(config, chaosPipe);
 
             var tokenSource = new CancellationTokenSource();
-
-            var receiversTask = InitVotingReceivers(votingReceivers, chaosPipe, tokenSource);
-
-            // Start the chaos mod controller
-            m_Logger.Information("Initializing controller");
-
-            var permittedUsernames = config.ReadValue("PermittedUsernames", "", "TwitchPermittedUsernames")?.ToLower()
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToArray();
-            var chaosModControllerConfig = new ChaosModControllerConfig()
+            bool channelPointsPausedByShortcut = false;
+            bool pendingChannelPointsPauseStateChange = false;
+            if (channelPointsReceiver != null)
             {
-                VotingMode = votingMode,
-                OverlayMode = overlayMode,
-                RetainInitialVotes = retainInitialVotes,
-                PermittedUsernames = permittedUsernames,
-                VoteablePrefix = config.ReadValue("VoteablePrefix", "")
-            };
-            _ = new ChaosModController(chaosPipe, overlayServer, votingReceivers.Select(item => item.VotingReceiver).ToArray(),
-                chaosModControllerConfig);
-
-            m_Logger.Information("Sending hello to mod");
-
-            chaosPipe.SendMessageToPipe("hello");
-            bool helloBackLogged = false;
-            while (chaosPipe.IsConnected() && !tokenSource.IsCancellationRequested)
-            {
-                if (chaosPipe.GotHelloBack && !helloBackLogged)
+                chaosPipe.OnSetChannelPointsPaused += (sender, eventArgs) =>
                 {
-                    m_Logger.Information("Received hello_back from mod!");
-                    helloBackLogged = true;
-                }
-                await Task.Delay(100);
+                    channelPointsPausedByShortcut = eventArgs.Paused;
+                    pendingChannelPointsPauseStateChange = true;
+                };
             }
 
-            m_Logger.Information("Shutting down");
+            try
+            {
+                var receiversTask = InitVotingReceivers(votingReceivers, chaosPipe, tokenSource);
+                var channelPointsTask = InitChannelPointsReceiver(channelPointsReceiver, tokenSource);
+
+                // Start the chaos mod controller
+                m_Logger.Information("Initializing controller");
+
+                var permittedUsernames = config.ReadValue("PermittedUsernames", "", "TwitchPermittedUsernames")?.ToLower()
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToArray();
+                var chaosModControllerConfig = new ChaosModControllerConfig()
+                {
+                    VotingMode = votingMode,
+                    OverlayMode = overlayMode,
+                    RetainInitialVotes = retainInitialVotes,
+                    PermittedUsernames = permittedUsernames,
+                    VoteablePrefix = config.ReadValue("VoteablePrefix", "")
+                };
+                _ = new ChaosModController(chaosPipe, overlayServer, votingReceivers.Select(item => item.VotingReceiver).ToArray(),
+                    chaosModControllerConfig);
+
+                m_Logger.Information("Sending hello to mod");
+
+                chaosPipe.SendMessageToPipe("hello");
+                bool helloBackLogged = false;
+                bool hasAppliedChannelPointsState = false;
+                while (chaosPipe.IsConnected() && !tokenSource.IsCancellationRequested)
+                {
+                    if (chaosPipe.GotHelloBack && !helloBackLogged)
+                    {
+                        m_Logger.Information("Received hello_back from mod!");
+                        helloBackLogged = true;
+                    }
+
+                    if (chaosPipe.GotHelloBack
+                        && channelPointsReceiver != null
+                        && channelPointsTask.IsCompletedSuccessfully
+                        && (!hasAppliedChannelPointsState || pendingChannelPointsPauseStateChange))
+                    {
+                        try
+                        {
+                            await channelPointsReceiver.SetManagedRewardsPaused(channelPointsPausedByShortcut);
+                            hasAppliedChannelPointsState = true;
+                            pendingChannelPointsPauseStateChange = false;
+                            m_Logger.Information(channelPointsPausedByShortcut
+                                ? "Managed Twitch channel point rewards are paused"
+                                : "Managed Twitch channel point rewards are now active");
+                        }
+                        catch (Exception exception)
+                        {
+                            m_Logger.Warning(exception, "Failed to update managed Twitch channel point reward pause state");
+                        }
+                    }
+
+                    await Task.Delay(100);
+                }
+
+                await Task.WhenAll(receiversTask, channelPointsTask);
+            }
+            finally
+            {
+                if (channelPointsReceiver != null)
+                {
+                    try
+                    {
+                        await channelPointsReceiver.DisableManagedRewards();
+                    }
+                    catch (Exception exception)
+                    {
+                        m_Logger.Warning(exception, "Failed to disable managed Twitch channel point rewards during shutdown");
+                    }
+                }
+
+                m_Logger.Information("Shutting down");
+            }
         }
     }
 }

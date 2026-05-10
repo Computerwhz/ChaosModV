@@ -20,6 +20,7 @@ Voting::Voting() : Component()
 {
 	m_EnableVoting =
 	    g_OptionsManager.GetVotingValue({ "EnableVoting", "EnableTwitchVoting" }, OPTION_DEFAULT_TWITCH_VOTING_ENABLED);
+	m_EnableChannelPoints = g_OptionsManager.GetVotingValue({ "EnableTwitchChannelPoints" }, false);
 	m_VoteablePrefix = g_OptionsManager.GetVotingValue<std::string>({ "VoteablePrefix" });
 
 	m_TextColor      = g_OptionsManager.GetConfigValue({ "EffectTextColor" }, OPTION_DEFAULT_BAR_COLOR);
@@ -38,7 +39,8 @@ void Voting::OnModPauseCleanup(PauseCleanupFlags cleanupFlags)
 
 void Voting::OnRun()
 {
-	if (!m_EnableVoting || !ComponentExists<EffectDispatcher>() || !ComponentExists<EffectDispatchTimer>())
+	if ((!m_EnableVoting && !m_EnableChannelPoints) || !ComponentExists<EffectDispatcher>()
+	    || !ComponentExists<EffectDispatchTimer>())
 		return;
 
 	if (!m_HasInitializedVoting)
@@ -110,7 +112,7 @@ void Voting::OnRun()
 	}
 
 	char buffer[BUFFER_SIZE];
-	DWORD bytesRead;
+	DWORD bytesRead = 0;
 	if (!ReadFile(m_PipeHandle, buffer, BUFFER_SIZE, &bytesRead, NULL))
 		while (GetLastError() == ERROR_IO_PENDING)
 			WAIT(0);
@@ -121,200 +123,207 @@ void Voting::OnRun()
 	if (!m_ReceivedHello)
 		return;
 
-	if (ComponentExists<MetaModifiers>())
+	if (m_EnableVoting)
 	{
-		auto newMode = GetComponent<MetaModifiers>()->VotingModeOverride;
-		if (m_VotingModeOverride != newMode)
-		{
-			m_VotingModeOverride = newMode;
-
-			if (newMode == VotingMode::None)
-				newMode = m_VotingMode;
-
-			SendToPipe("votingmode", { std::string(newMode.ToString()) });
-		}
-	}
-
-	if (GetComponent<EffectDispatchTimer>()->GetRemainingTimerTime() <= 1 && !m_HasReceivedResult)
-	{
-		// Get vote result 1 second before effect is supposed to dispatch
-
-		if (m_IsVotingRunning)
-		{
-			m_IsVotingRunning = false;
-
-			SendToPipe("getvoteresult");
-		}
-	}
-	else if (GetComponent<EffectDispatchTimer>()->ShouldDispatchEffectNow())
-	{
-		// End of voting round; dispatch resulting effect
-
-		// Should be random effect voteable, so just dispatch random effect
-		if (m_ChosenEffectId->Id().empty())
-			GetComponent<EffectDispatcher>()->DispatchRandomEffect();
-		else
-			GetComponent<EffectDispatcher>()->DispatchEffect(*m_ChosenEffectId);
-		GetComponent<EffectDispatchTimer>()->ResetTimer();
-
 		if (ComponentExists<MetaModifiers>())
-			for (int i = 0; i < GetComponent<MetaModifiers>()->AdditionalEffectsToDispatch; i++)
-				GetComponent<EffectDispatcher>()->DispatchRandomEffect();
-
-		m_IsVotingRoundDone = true;
-	}
-	else if (!m_IsVotingRunning && m_ReceivedHello
-	         && (m_SecsBeforeVoting == 0
-	             || GetComponent<EffectDispatchTimer>()->GetRemainingTimerTime() <= m_SecsBeforeVoting)
-	         && m_IsVotingRoundDone)
-	{
-		// New voting round
-
-		m_IsVotingRunning   = true;
-		m_HasReceivedResult = false;
-		m_IsVotingRoundDone = false;
-
-		m_ChosenEffectId    = std::make_unique<EffectIdentifier>();
-
-		m_EffectChoices.clear();
-
-		const auto &filteredEffects = GetFilteredEnabledEffects();
-		std::vector<EffectData *> choosableEffects;
-		choosableEffects.reserve(filteredEffects.size());
-		for (auto &effectData : filteredEffects)
 		{
-			if (!effectData->IsMeta() && !effectData->IsExcludedFromVoting() && !effectData->IsUtility()
-			    && !effectData->IsHidden())
+			auto newMode = GetComponent<MetaModifiers>()->VotingModeOverride;
+			if (m_VotingModeOverride != newMode)
 			{
-				choosableEffects.push_back(effectData);
+				m_VotingModeOverride = newMode;
+
+				if (newMode == VotingMode::None)
+					newMode = m_VotingMode;
+
+				SendToPipe("votingmode", { std::string(newMode.ToString()) });
 			}
 		}
 
-		for (int idx = 0; idx < 4; idx++)
+		if (GetComponent<EffectDispatchTimer>()->GetRemainingTimerTime() <= 1 && !m_HasReceivedResult)
 		{
-			// 4th voteable is for random effect (if enabled)
-			if (idx == 3)
-			{
-				if (m_EnableRandomEffectVoteable)
-				{
-					auto match = (std::ostringstream() << m_VoteablePrefix << (!m_AlternatedVotingRound ? 4 : 8)).str();
-					m_EffectChoices.push_back(
-					    std::make_unique<ChoosableEffect>(EffectIdentifier(), "Random Effect", match));
-				}
+			// Get vote result 1 second before effect is supposed to dispatch
 
-				break;
+			if (m_IsVotingRunning)
+			{
+				m_IsVotingRunning = false;
+
+				SendToPipe("getvoteresult");
+			}
+		}
+		else if (GetComponent<EffectDispatchTimer>()->ShouldDispatchEffectNow())
+		{
+			// End of voting round; dispatch resulting effect
+
+			// Should be random effect voteable, so just dispatch random effect
+			if (m_ChosenEffectId->Id().empty())
+				GetComponent<EffectDispatcher>()->DispatchRandomEffect();
+			else
+				GetComponent<EffectDispatcher>()->DispatchEffect(*m_ChosenEffectId);
+			GetComponent<EffectDispatchTimer>()->ResetTimer();
+
+			if (ComponentExists<MetaModifiers>())
+				for (int i = 0; i < GetComponent<MetaModifiers>()->AdditionalEffectsToDispatch; i++)
+					GetComponent<EffectDispatcher>()->DispatchRandomEffect();
+
+			m_IsVotingRoundDone = true;
+		}
+		else if (!m_IsVotingRunning && m_ReceivedHello
+		         && (m_SecsBeforeVoting == 0
+		             || GetComponent<EffectDispatchTimer>()->GetRemainingTimerTime() <= m_SecsBeforeVoting)
+		         && m_IsVotingRoundDone)
+		{
+			// New voting round
+
+			m_IsVotingRunning   = true;
+			m_HasReceivedResult = false;
+			m_IsVotingRoundDone = false;
+
+			m_ChosenEffectId    = std::make_unique<EffectIdentifier>();
+
+			m_EffectChoices.clear();
+
+			const auto &filteredEffects = GetFilteredEnabledEffects();
+			std::vector<EffectData *> choosableEffects;
+			choosableEffects.reserve(filteredEffects.size());
+			for (auto &effectData : filteredEffects)
+			{
+				if (!effectData->IsMeta() && !effectData->IsExcludedFromVoting() && !effectData->IsUtility()
+				    && !effectData->IsHidden())
+				{
+					choosableEffects.push_back(effectData);
+				}
 			}
 
-			float totalWeight = 0.f;
-			for (const auto &effectData : choosableEffects)
-				totalWeight += effectData->GetEffectWeight();
-
-			float chosen = g_RandomNoDeterm.GetRandomFloat(0.f, totalWeight);
-
-			totalWeight  = 0.f;
-			for (auto it = choosableEffects.begin(); it != choosableEffects.end();)
+			for (int idx = 0; idx < 4; idx++)
 			{
-				const auto &effectData = *it;
-
-				totalWeight += effectData->GetEffectWeight();
-				if (chosen <= totalWeight)
+				// 4th voteable is for random effect (if enabled)
+				if (idx == 3)
 				{
-					// Set weight of this effect 0, EffectDispatcher::DispatchEffect will increment it immediately by
-					// EffectWeightMult
-					effectData->Weight = 0;
+					if (m_EnableRandomEffectVoteable)
+					{
+						auto match =
+						    (std::ostringstream() << m_VoteablePrefix << (!m_AlternatedVotingRound ? 4 : 8)).str();
+						m_EffectChoices.push_back(
+						    std::make_unique<ChoosableEffect>(EffectIdentifier(), "Random Effect", match));
+					}
 
-					auto match         = (std::ostringstream() << m_VoteablePrefix
-                                                       << (!m_AlternatedVotingRound       ? idx + 1
-					                                               : m_EnableRandomEffectVoteable ? idx + 5
-					                                                                              : idx + 4))
-					                 .str();
-
-					m_EffectChoices.push_back(std::make_unique<ChoosableEffect>(
-					    effectData->Id, effectData->HasCustomName() ? effectData->CustomName : effectData->Name,
-					    match));
-					it = choosableEffects.erase(it);
 					break;
 				}
 
-				it++;
+				float totalWeight = 0.f;
+				for (const auto &effectData : choosableEffects)
+					totalWeight += effectData->GetEffectWeight();
+
+				float chosen = g_RandomNoDeterm.GetRandomFloat(0.f, totalWeight);
+
+				totalWeight  = 0.f;
+				for (auto it = choosableEffects.begin(); it != choosableEffects.end();)
+				{
+					const auto &effectData = *it;
+
+					totalWeight += effectData->GetEffectWeight();
+					if (chosen <= totalWeight)
+					{
+						// Set weight of this effect 0, EffectDispatcher::DispatchEffect will increment it immediately by
+						// EffectWeightMult
+						effectData->Weight = 0;
+
+						auto match         = (std::ostringstream() << m_VoteablePrefix
+                                                           << (!m_AlternatedVotingRound       ? idx + 1
+						                                               : m_EnableRandomEffectVoteable ? idx + 5
+						                                                                              : idx + 4))
+						                 .str();
+
+						m_EffectChoices.push_back(std::make_unique<ChoosableEffect>(
+						    effectData->Id, effectData->HasCustomName() ? effectData->CustomName : effectData->Name,
+						    match));
+						it = choosableEffects.erase(it);
+						break;
+					}
+
+					it++;
+				}
 			}
+
+			std::vector<std::string> effectNames;
+			for (const auto &pChoosableEffect : m_EffectChoices)
+				effectNames.push_back(pChoosableEffect->Name);
+
+			SendToPipe("vote", effectNames);
+
+			m_AlternatedVotingRound = !m_AlternatedVotingRound;
 		}
 
-		std::vector<std::string> effectNames;
-		for (const auto &pChoosableEffect : m_EffectChoices)
-			effectNames.push_back(pChoosableEffect->Name);
-
-		SendToPipe("vote", effectNames);
-
-		m_AlternatedVotingRound = !m_AlternatedVotingRound;
-	}
-
-	if (m_IsVotingRunning && m_OverlayMode == OverlayMode::OverlayIngame)
-	{
-		// Print voteables on screen
-
-		// Count total votes if chance system is enabled
-		int totalVotes = 0;
-		if (m_VotingMode == VotingMode::Percentage)
+		if (m_IsVotingRunning && m_OverlayMode == OverlayMode::OverlayIngame)
 		{
-			for (const auto &choosableEffect : m_EffectChoices)
-			{
-				int chanceVotes =
-				    choosableEffect->ChanceVotes + (m_EnableVotingChanceSystemRetainInitialChance ? 1 : 0);
+			// Print voteables on screen
 
-				totalVotes += chanceVotes;
-			}
-		}
-
-		float y = .1f;
-		for (const auto &choosableEffect : m_EffectChoices)
-		{
-			std::ostringstream oss;
-			oss << choosableEffect->Match << ": " << choosableEffect->Name;
-
-			// Also show chance percentages if chance system is enabled
+			// Count total votes if chance system is enabled
+			int totalVotes = 0;
 			if (m_VotingMode == VotingMode::Percentage)
 			{
-				float percentage;
-				if (totalVotes == 0)
-				{
-					percentage = 100.f / m_EffectChoices.size() * .01f;
-				}
-				else
+				for (const auto &choosableEffect : m_EffectChoices)
 				{
 					int chanceVotes =
 					    choosableEffect->ChanceVotes + (m_EnableVotingChanceSystemRetainInitialChance ? 1 : 0);
 
-					percentage =
-					    !chanceVotes
-					        ? .0f
-					        : std::roundf(static_cast<float>(chanceVotes) / static_cast<float>(totalVotes) * 100.f)
-					              / 100.f;
+					totalVotes += chanceVotes;
 				}
-
-				oss << " (" << percentage * 100.f << "%)";
 			}
 
-			DrawScreenText(oss.str(), { .95f, y }, .41f, m_TextColor, true,
-			               ScreenTextAdjust::Right, { .0f, .95f }, true);
+			float y = .1f;
+			for (const auto &choosableEffect : m_EffectChoices)
+			{
+				std::ostringstream oss;
+				oss << choosableEffect->Match << ": " << choosableEffect->Name;
 
-			y += .05f;
+				// Also show chance percentages if chance system is enabled
+				if (m_VotingMode == VotingMode::Percentage)
+				{
+					float percentage;
+					if (totalVotes == 0)
+					{
+						percentage = 100.f / m_EffectChoices.size() * .01f;
+					}
+					else
+					{
+						int chanceVotes =
+						    choosableEffect->ChanceVotes + (m_EnableVotingChanceSystemRetainInitialChance ? 1 : 0);
+
+						percentage =
+						    !chanceVotes
+						        ? .0f
+						        : std::roundf(static_cast<float>(chanceVotes) / static_cast<float>(totalVotes) * 100.f)
+						              / 100.f;
+					}
+
+					oss << " (" << percentage * 100.f << "%)";
+				}
+
+				DrawScreenText(oss.str(), { .95f, y }, .41f, m_TextColor, true,
+				               ScreenTextAdjust::Right, { .0f, .95f }, true);
+
+				y += .05f;
+			}
 		}
 	}
 }
 
 bool Voting::Init()
 {
-	const auto enabledEffects = GetFilteredEnabledEffects();
-
-	if (std::count_if(enabledEffects.begin(), enabledEffects.end(),
-	                  [](const auto &effectData) { return !effectData->IsExcludedFromVoting(); })
-	    < 3)
+	if (m_EnableVoting)
 	{
-		ErrorOutWithMsg("You need at least 3 enabled effects (which are not excluded from voting) to enable voting."
-		                " Reverting to normal mode.");
+		const auto enabledEffects = GetFilteredEnabledEffects();
 
-		return false;
+		if (std::count_if(enabledEffects.begin(), enabledEffects.end(),
+		                  [](const auto &effectData) { return !effectData->IsExcludedFromVoting(); })
+		    < 3)
+		{
+			ErrorOutWithMsg("You need at least 3 enabled effects (which are not excluded from voting) to enable voting."
+			                " Reverting to normal mode.");
+
+			return false;
+		}
 	}
 
 	// A previous instance of the voting proxy could still be running, wait for it to release the mutex
@@ -392,10 +401,12 @@ void Voting::HandleMsg(std::string_view message)
 
 			LOG("Received hello from voting pipe");
 
-			if (ComponentExists<EffectDispatchTimer>())
+			if (m_EnableVoting && ComponentExists<EffectDispatchTimer>())
 				GetComponent<EffectDispatchTimer>()->SetShouldDispatchEffects(false);
 
 			SendToPipe("hello_back");
+			if (m_EnableChannelPoints)
+				SendToPipe("set_channel_points_paused", { m_AreChannelPointsPaused ? "1" : "0" });
 		}
 	}
 	else if (message == "ping")
@@ -436,6 +447,58 @@ void Voting::HandleMsg(std::string_view message)
 				std::string message = receivedJSON["Message"];
 				ErrorOutWithMsg(message);
 			}
+			else if (identifier == "trigger_effect")
+			{
+				std::vector<std::string> options = receivedJSON["Options"];
+				if (options.empty())
+					return;
+
+				const std::string &requestId = options[0];
+				if (options.size() < 2)
+				{
+					SendChannelPointsResult(requestId, false, "No effect ID was provided.");
+					return;
+				}
+
+				if (!ComponentExists<EffectDispatcher>())
+				{
+					SendChannelPointsResult(requestId, false, "Effect dispatcher is unavailable.");
+					return;
+				}
+
+				const std::string &effectIdStr = options[1];
+				EffectIdentifier effectId(effectIdStr);
+				if (g_EnabledEffects.contains(effectId))
+				{
+					GetComponent<EffectDispatcher>()->DispatchEffect(effectId, EffectDispatcher::DispatchEffectFlag_None,
+					                                                "(Points)");
+					SendChannelPointsResult(requestId, true);
+				}
+				else
+				{
+					LOG("Ignoring Twitch channel points request for unknown or disabled effect " << effectIdStr);
+					SendChannelPointsResult(requestId, false, "That effect is unknown or currently disabled.");
+				}
+			}
+			else if (identifier == "clear_effects")
+			{
+				std::vector<std::string> options = receivedJSON["Options"];
+				if (options.empty())
+					return;
+
+				const std::string &requestId = options[0];
+				if (!ComponentExists<EffectDispatcher>())
+				{
+					SendChannelPointsResult(requestId, false, "Effect dispatcher is unavailable.");
+					return;
+				}
+
+				GetComponent<EffectDispatcher>()->ClearEffects();
+				if (ComponentExists<SplashTexts>())
+					GetComponent<SplashTexts>()->ShowClearEffectsSplash();
+
+				SendChannelPointsResult(requestId, true);
+			}
 		}
 	}
 }
@@ -455,8 +518,47 @@ void Voting::SendToPipe(std::string_view identifier, std::vector<std::string> pa
 	WriteFile(m_PipeHandle, msg.c_str(), msg.length(), NULL, NULL);
 }
 
+void Voting::SendChannelPointsResult(std::string_view requestId, bool success, std::string_view message)
+{
+	if (requestId.empty())
+		return;
+
+	std::vector<std::string> params = { std::string(requestId), success ? "success" : "failed" };
+	if (!message.empty())
+		params.emplace_back(message);
+
+	SendToPipe("channel_points_result", params);
+}
+
+void Voting::SetChannelPointsPaused(bool paused)
+{
+	if (!m_EnableChannelPoints || m_AreChannelPointsPaused == paused)
+		return;
+
+	m_AreChannelPointsPaused = paused;
+
+	if (m_ReceivedHello && m_PipeHandle != INVALID_HANDLE_VALUE)
+		SendToPipe("set_channel_points_paused", { m_AreChannelPointsPaused ? "1" : "0" });
+
+	if (ComponentExists<SplashTexts>())
+		GetComponent<SplashTexts>()->ShowChannelPointsPauseStateSplash(m_AreChannelPointsPaused);
+}
+
+void Voting::ToggleChannelPointsPaused()
+{
+	SetChannelPointsPaused(!m_AreChannelPointsPaused);
+}
+
 void Voting::ErrorOutWithMsg(std::string_view message)
 {
+	if (ComponentExists<SplashTexts>())
+	{
+		if (message.find("Connection to voting proxy process lost") != std::string_view::npos)
+			GetComponent<SplashTexts>()->ShowVotingProxyDisconnectedSplash();
+		else
+			GetComponent<SplashTexts>()->ShowVotingProxyErrorSplash(std::string(message));
+	}
+
 	std::wstring wStr = { message.begin(), message.end() };
 	MessageBox(NULL, wStr.c_str(), L"ChaosModV Error", MB_OK | MB_ICONERROR);
 
@@ -468,4 +570,5 @@ void Voting::ErrorOutWithMsg(std::string_view message)
 		GetComponent<EffectDispatchTimer>()->SetShouldDispatchEffects(true);
 
 	m_EnableVoting = false;
+	m_EnableChannelPoints = false;
 }

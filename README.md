@@ -1,5 +1,7 @@
 # Chaos Mod V
 
+# I DO NOT RECOMMEND USING THIS FORK IT IS UNTESTED AND MADE IN LARGE PART WITH AI DUE TO ME NOT KNOWING ANYTHING ABOUT THE TWITCH API
+
 A replica of the chaos mods found on previous GTA games for GTA V.
 
 See the [GTA5-Mods mod page](https://www.gta5-mods.com/scripts/chaos-mod-v-beta) for more information and instructions on how to install it.

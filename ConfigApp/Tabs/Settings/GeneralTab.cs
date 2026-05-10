@@ -12,7 +12,25 @@ namespace ConfigApp.Tabs.Settings
         private TextBox? m_RandomSeed = null;
         private CheckBox? m_EnableEffectGroupWeighting = null;
         private CheckBox? m_EnableModSplashTexts = null;
+        private CheckBox? m_EnableStartupSplashTexts = null;
+        private CheckBox? m_EnableVotingSplashTexts = null;
+        private CheckBox? m_EnableClearEffectsSplashTexts = null;
+        private CheckBox? m_EnableVotingProxySplashTexts = null;
         private CheckBox? m_EnableFailsafe = null;
+
+        private void UpdateSplashCheckboxesEnabledState()
+        {
+            var enabled = m_EnableModSplashTexts?.IsChecked.GetValueOrDefault() ?? false;
+
+            if (m_EnableStartupSplashTexts is not null)
+                m_EnableStartupSplashTexts.IsEnabled = enabled;
+            if (m_EnableVotingSplashTexts is not null)
+                m_EnableVotingSplashTexts.IsEnabled = enabled;
+            if (m_EnableClearEffectsSplashTexts is not null)
+                m_EnableClearEffectsSplashTexts.IsEnabled = enabled;
+            if (m_EnableVotingProxySplashTexts is not null)
+                m_EnableVotingProxySplashTexts.IsEnabled = enabled;
+        }
 
         protected override void InitContent()
         {
@@ -46,7 +64,16 @@ namespace ConfigApp.Tabs.Settings
             grid.PopRow();
 
             grid.PushRowSpacedPair("Show mod splash texts", m_EnableModSplashTexts = Utils.GenerateCommonCheckBox());
+            m_EnableModSplashTexts.Click += (sender, eventArgs) => { UpdateSplashCheckboxesEnabledState(); };
             grid.PushRowSpacedPair("Allow prevention of repetitive mission fails (Failsafe)", m_EnableFailsafe = Utils.GenerateCommonCheckBox());
+            grid.PopRow();
+
+            grid.PushRowSpacedPair("Show startup splash texts", m_EnableStartupSplashTexts = Utils.GenerateCommonCheckBox());
+            grid.PushRowSpacedPair("Show voting splash texts", m_EnableVotingSplashTexts = Utils.GenerateCommonCheckBox());
+            grid.PopRow();
+
+            grid.PushRowSpacedPair("Show clear-effects splash texts", m_EnableClearEffectsSplashTexts = Utils.GenerateCommonCheckBox());
+            grid.PushRowSpacedPair("Show voting proxy splash texts", m_EnableVotingProxySplashTexts = Utils.GenerateCommonCheckBox());
             grid.PopRow();
 
             scrollViewer.Content = grid.Grid;
@@ -72,6 +99,16 @@ namespace ConfigApp.Tabs.Settings
                 m_EnableFailsafe.IsChecked = OptionsManager.ConfigFile.ReadValue("EnableFailsafe", true);
             if (m_EnableModSplashTexts is not null)
                 m_EnableModSplashTexts.IsChecked = OptionsManager.ConfigFile.ReadValue("EnableModSplashTexts", true);
+            if (m_EnableStartupSplashTexts is not null)
+                m_EnableStartupSplashTexts.IsChecked = OptionsManager.ConfigFile.ReadValue("EnableStartupSplashTexts", true);
+            if (m_EnableVotingSplashTexts is not null)
+                m_EnableVotingSplashTexts.IsChecked = OptionsManager.ConfigFile.ReadValue("EnableVotingSplashTexts", true);
+            if (m_EnableClearEffectsSplashTexts is not null)
+                m_EnableClearEffectsSplashTexts.IsChecked = OptionsManager.ConfigFile.ReadValue("EnableClearEffectsSplashTexts", true);
+            if (m_EnableVotingProxySplashTexts is not null)
+                m_EnableVotingProxySplashTexts.IsChecked = OptionsManager.ConfigFile.ReadValue("EnableVotingProxySplashTexts", true);
+
+            UpdateSplashCheckboxesEnabledState();
         }
 
         public override void OnSaveValues()
@@ -84,6 +121,10 @@ namespace ConfigApp.Tabs.Settings
             OptionsManager.ConfigFile.WriteValue("DisableStartup", m_DisableModOnStartup?.IsChecked);
             OptionsManager.ConfigFile.WriteValue("EnableFailsafe", m_EnableFailsafe?.IsChecked);
             OptionsManager.ConfigFile.WriteValue("EnableModSplashTexts", m_EnableModSplashTexts?.IsChecked);
+            OptionsManager.ConfigFile.WriteValue("EnableStartupSplashTexts", m_EnableStartupSplashTexts?.IsChecked);
+            OptionsManager.ConfigFile.WriteValue("EnableVotingSplashTexts", m_EnableVotingSplashTexts?.IsChecked);
+            OptionsManager.ConfigFile.WriteValue("EnableClearEffectsSplashTexts", m_EnableClearEffectsSplashTexts?.IsChecked);
+            OptionsManager.ConfigFile.WriteValue("EnableVotingProxySplashTexts", m_EnableVotingProxySplashTexts?.IsChecked);
         }
     }
 }

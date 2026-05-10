@@ -46,6 +46,8 @@ class Voting : public Component
 	Color m_TextColor;
 
 	bool m_EnableVoting                                = false;
+	bool m_EnableChannelPoints                         = false;
+	bool m_AreChannelPointsPaused                      = false;
 	bool m_HasInitializedVoting                        = false;
 
 	bool m_ReceivedHello                               = false;
@@ -72,9 +74,12 @@ class Voting : public Component
 	bool IsEnabled() const;
 	VotingMode GetVotingMode() const;
 	void HandleMsg(std::string_view message);
+	void ToggleChannelPointsPaused();
 
   private:
 	std::string GetPipeJson(std::string_view identifier, std::vector<std::string> params);
+	void SendChannelPointsResult(std::string_view requestId, bool success, std::string_view message = {});
+	void SetChannelPointsPaused(bool paused);
 
   public:
 	void SendToPipe(std::string_view identifier, std::vector<std::string> params = {});

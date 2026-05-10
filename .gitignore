@@ -338,6 +338,8 @@ ASALocalRun/
 ChaosMod/Info.h
 ChaosMod/.cache/
 ChaosMod/build/
+ChaosMod/build-x64/
+ChaosMod/build/build-x64/
 ChaosMod/out/
 build/
 ChaosMod/CMakePresets.json

@@ -27,6 +27,18 @@ class SplashTexts : public Component
 	std::list<SplashText> m_ActiveSplashes;
 
 	bool m_EnableSplashTexts = true;
+	bool m_EnableStartupSplashTexts = true;
+	bool m_EnableVotingSplashTexts = true;
+	bool m_EnableClearEffectsSplashTexts = true;
+	bool m_EnableVotingProxySplashTexts = true;
+
+	enum class SplashType
+	{
+		Startup,
+		Voting,
+		ClearEffects,
+		VotingProxy
+	};
 
   public:
 	SplashTexts();
@@ -35,7 +47,13 @@ class SplashTexts : public Component
 	virtual void OnModPauseCleanup(PauseCleanupFlags cleanupFlags = {}) override;
 
 	void ShowSplash(const std::string &text, const ScreenTextVector &textPos, float scale, Color textColor,
-	                std::uint8_t timeSecs = 10);
+	                std::uint8_t timeSecs = 10, SplashType splashType = SplashType::Startup);
 	void ShowVotingSplash();
 	void ShowClearEffectsSplash();
+	void ShowChannelPointsPauseStateSplash(bool paused);
+	void ShowVotingProxyDisconnectedSplash();
+	void ShowVotingProxyErrorSplash(const std::string &reason = {});
+
+  private:
+	bool IsSplashTypeEnabled(SplashType splashType) const;
 };

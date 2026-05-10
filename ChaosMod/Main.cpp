@@ -34,6 +34,7 @@ static struct
 	bool ToggleModState              = false;
 	bool DisableMod                  = false;
 	bool PauseTimerShortcutEnabled   = false;
+	bool PauseChannelPointsShortcutEnabled = false;
 	bool HaveLateHooksRan            = false;
 	bool AntiSoftlockShortcutEnabled = false;
 	bool RunAntiSoftlock             = false;
@@ -115,6 +116,8 @@ static void Init()
 	    g_OptionsManager.GetConfigValue({ "EnableToggleModShortcut" }, OPTION_DEFAULT_SHORTCUT_TOGGLE_MOD);
 	ms_Flags.PauseTimerShortcutEnabled =
 	    g_OptionsManager.GetConfigValue({ "EnablePauseTimerShortcut" }, OPTION_DEFAULT_SHORTCUT_PAUSE_TIMER);
+	ms_Flags.PauseChannelPointsShortcutEnabled =
+	    g_OptionsManager.GetConfigValue({ "EnablePauseChannelPointsShortcut" }, OPTION_DEFAULT_SHORTCUT_PAUSE_CHANNEL_POINTS);
 	ms_Flags.AntiSoftlockShortcutEnabled =
 	    g_OptionsManager.GetConfigValue({ "EnableAntiSoftlockShortcut" }, OPTION_DEFAULT_SHORTCUT_ANTI_SOFTLOCK);
 
@@ -398,6 +401,11 @@ namespace Main
 			{
 				if (ComponentExists<DebugMenu>() && GetComponent<DebugMenu>()->IsEnabled())
 					GetComponent<DebugMenu>()->SetVisible(!GetComponent<DebugMenu>()->IsVisible());
+			}
+			else if (key == VK_OEM_2)
+			{
+				if (ms_Flags.PauseChannelPointsShortcutEnabled && ComponentExists<Voting>())
+					GetComponent<Voting>()->ToggleChannelPointsPaused();
 			}
 			else if (key == 0x4B) // K
 			{
