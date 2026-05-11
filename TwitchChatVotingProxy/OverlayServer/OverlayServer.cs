@@ -11,6 +11,8 @@ namespace TwitchChatVotingProxy.OverlayServer
         private readonly OverlayServerConfig config;
         private readonly List<IWebSocketConnection> connections = new();
         private readonly ILogger logger = Log.Logger.ForContext<OverlayServer>();
+        private bool channelPointsEnabled;
+        private bool channelPointsPaused;
 
         public OverlayServer(OverlayServerConfig config)
         {
@@ -50,6 +52,13 @@ namespace TwitchChatVotingProxy.OverlayServer
         public void UpdateVoting(List<IVoteOption> voteOptions)
         {
             Request("UPDATE", voteOptions);
+        }
+
+        public void SetChannelPointsStatus(bool enabled, bool paused)
+        {
+            channelPointsEnabled = enabled;
+            channelPointsPaused = enabled && paused;
+            Broadcast(SerializeMessage(CreateMessage("STATUS")));
         }
 
         /// <summary>
@@ -93,6 +102,7 @@ namespace TwitchChatVotingProxy.OverlayServer
             {
                 logger.Information($"New websocket client {connection.ConnectionInfo.ClientIpAddress}");
                 connections.Add(connection);
+                Send(connection, CreateMessage("STATUS"));
             }
             catch (Exception e)
             {
@@ -106,28 +116,56 @@ namespace TwitchChatVotingProxy.OverlayServer
         /// <param name="voteOptions">Vote options that should be sent</param>
         private void Request(string request, List<IVoteOption> voteOptions)
         {
+            Broadcast(SerializeMessage(CreateMessage(request, voteOptions)));
+        }
+
+        private OverlayMessage CreateMessage(string request, List<IVoteOption>? voteOptions = null)
+        {
             var msg = new OverlayMessage
             {
                 Request = request,
-                VoteOptions = voteOptions.ConvertAll(_ => new OverlayVoteOption(_)).ToArray(),
-                RetainInitialVotes = config.RetainInitialVotes
+                RetainInitialVotes = config.RetainInitialVotes,
+                ChannelPointsEnabled = channelPointsEnabled,
+                ChannelPointsPaused = channelPointsEnabled && channelPointsPaused
             };
-            var strVotingMode = VotingMode.Lookup(config.VotingMode);
-            if (strVotingMode != null)
-                msg.VotingMode = strVotingMode;
-            else
+
+            if (voteOptions != null)
             {
-                logger.Error($"Could not find voting mode {config.VotingMode} in dictionary");
-                msg.VotingMode = "UNKNOWN_VOTING_MODE";
+                msg.VoteOptions = voteOptions.ConvertAll(_ => new OverlayVoteOption(_)).ToArray();
+
+                var strVotingMode = VotingMode.Lookup(config.VotingMode);
+                if (strVotingMode != null)
+                    msg.VotingMode = strVotingMode;
+                else
+                {
+                    logger.Error($"Could not find voting mode {config.VotingMode} in dictionary");
+                    msg.VotingMode = "UNKNOWN_VOTING_MODE";
+                }
+
+                msg.TotalVotes = 0;
+                voteOptions.ForEach(_ => msg.TotalVotes += _.Votes);
             }
-            // Count total votes      
-            msg.TotalVotes = 0;
-            voteOptions.ForEach(_ => msg.TotalVotes += _.Votes);
-            // Send the message to all clients
-            Broadcast(JsonConvert.SerializeObject(msg, new JsonSerializerSettings
+
+            return msg;
+        }
+
+        private void Send(IWebSocketConnection connection, OverlayMessage message)
+        {
+            if (!connection.IsAvailable)
+            {
+                connection.Close();
+                return;
+            }
+
+            connection.Send(SerializeMessage(message));
+        }
+
+        private string SerializeMessage(OverlayMessage message)
+        {
+            return JsonConvert.SerializeObject(message, new JsonSerializerSettings
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver()
-            }));
+            });
         }
     }
 }

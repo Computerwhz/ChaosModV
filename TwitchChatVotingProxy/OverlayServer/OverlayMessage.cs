@@ -5,6 +5,8 @@
     /// </summary>
     class OverlayMessage
     {
+        public bool? ChannelPointsEnabled { get; set; } = null;
+        public bool? ChannelPointsPaused { get; set; } = null;
         public bool? RetainInitialVotes { get; set; } = null;
         /// <summary>
         /// request type

@@ -117,12 +117,16 @@ namespace TwitchChatVotingProxy
             bool pendingChannelPointsPauseStateChange = false;
             if (channelPointsReceiver != null)
             {
+                overlayServer?.SetChannelPointsStatus(true, true);
                 chaosPipe.OnSetChannelPointsPaused += (sender, eventArgs) =>
                 {
                     channelPointsPausedByShortcut = eventArgs.Paused;
                     pendingChannelPointsPauseStateChange = true;
+                    overlayServer?.SetChannelPointsStatus(true, channelPointsPausedByShortcut);
                 };
             }
+            else
+                overlayServer?.SetChannelPointsStatus(false, false);
 
             try
             {
@@ -168,6 +172,7 @@ namespace TwitchChatVotingProxy
                             await channelPointsReceiver.SetManagedRewardsPaused(channelPointsPausedByShortcut);
                             hasAppliedChannelPointsState = true;
                             pendingChannelPointsPauseStateChange = false;
+                            overlayServer?.SetChannelPointsStatus(true, channelPointsPausedByShortcut);
                             m_Logger.Information(channelPointsPausedByShortcut
                                 ? "Managed Twitch channel point rewards are paused"
                                 : "Managed Twitch channel point rewards are now active");
@@ -185,6 +190,8 @@ namespace TwitchChatVotingProxy
             }
             finally
             {
+                overlayServer?.SetChannelPointsStatus(false, false);
+
                 if (channelPointsReceiver != null)
                 {
                     try

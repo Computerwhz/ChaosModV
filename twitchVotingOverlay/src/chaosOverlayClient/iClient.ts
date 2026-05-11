@@ -27,6 +27,11 @@ export interface IChaosOverlayClient {
 	 */
 	addNoVotingRoundListener(listener: TChaosOverlayClientEvent): void;
 	/**
+	 * Adds a listener that is triggered when the channel points status changes
+	 * @param listener callback that should be called
+	 */
+	addStatusListener(listener: TChaosOverlayClientEvent): void;
+	/**
 	 * Adds a listener that is triggered when a no voting round is created
 	 * @param listener callback that should be called
 	 */
@@ -56,6 +61,11 @@ export interface IChaosOverlayClient {
 	 * @param listener callback that should be removed
 	 */
 	removeNoVotingRoundListener(listener: TChaosOverlayClientEvent): void;
+	/**
+	 * Removes channel points status listener
+	 * @param listener callback that should be removed
+	 */
+	removeStatusListener(listener: TChaosOverlayClientEvent): void;
 	/**
 	 * Removes vote update listener
 	 * @param listener callback that should be removed

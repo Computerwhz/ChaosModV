@@ -41,6 +41,11 @@ namespace ConfigApp.Tabs.Voting
             public int RewardCost { get; set; } = 1000;
             public TwitchChannelPointActionType Action { get; set; } = TwitchChannelPointActionType.TriggerEffect;
             public string? EffectId { get; set; } = null;
+            public bool UseCooldownAndLimits { get; set; } = false;
+            public bool IsCooldownAndLimitsExpanded { get; set; } = false;
+            public int GlobalCooldownMinutes { get; set; } = 0;
+            public int MaxRedemptionsPerStream { get; set; } = 0;
+            public int MaxRedemptionsPerUserPerStream { get; set; } = 0;
         }
 
         private static readonly IReadOnlyList<ChannelPointActionOption> ms_ActionOptions = new[]
@@ -239,6 +244,33 @@ namespace ConfigApp.Tabs.Voting
             button.Style = style;
         }
 
+        private static void ApplyTableTextBoxStyle(TextBox textBox, bool isEnabled = true)
+        {
+            textBox.Background = isEnabled ? ms_TableControlBackground : ms_TableControlBackgroundDisabled;
+            textBox.Foreground = isEnabled ? ms_TableControlForeground : ms_TableControlForegroundDisabled;
+            textBox.BorderBrush = ms_TableControlBorderBrush;
+            textBox.BorderThickness = new Thickness(1f);
+            textBox.SnapsToDevicePixels = true;
+            textBox.UseLayoutRounding = true;
+            textBox.IsEnabled = isEnabled;
+        }
+
+        private static int ConvertCooldownSecondsToMinutes(int seconds)
+        {
+            if (seconds <= 0)
+                return 0;
+
+            return Math.Max(1, (int)Math.Ceiling(seconds / 60d));
+        }
+
+        private static int ConvertCooldownMinutesToSeconds(int minutes)
+        {
+            if (minutes <= 0)
+                return 0;
+
+            return Math.Clamp(minutes * 60, 60, 604800);
+        }
+
         private static string GetGeneratedManagedRewardTitle(ChannelPointRewardRow row)
         {
             if (row.Action == TwitchChannelPointActionType.ClearEffects)
@@ -323,12 +355,18 @@ namespace ConfigApp.Tabs.Voting
             for (var index = 0; index < m_ChannelPointRewardRows.Count; index++)
             {
                 var row = m_ChannelPointRewardRows[index];
+                var rowBackground = index % 2 == 0 ? ms_TableRowBackgroundEven : ms_TableRowBackgroundOdd;
+
+                var rowContainer = new StackPanel()
+                {
+                    Background = rowBackground,
+                    Margin = new Thickness(0f, 1f, 0f, 0f)
+                };
 
                 var rowGrid = new Grid()
                 {
-                    Background = index % 2 == 0 ? ms_TableRowBackgroundEven : ms_TableRowBackgroundOdd,
+                    Background = rowBackground,
                     Height = 42f,
-                    Margin = new Thickness(0f, 1f, 0f, 0f),
                     SnapsToDevicePixels = true,
                     UseLayoutRounding = true
                 };
@@ -341,12 +379,7 @@ namespace ConfigApp.Tabs.Voting
                 var pointsBox = Utils.GenerateCommonNumericOnlyTextBox(7, 100f, 28f);
                 pointsBox.Margin = new Thickness(8f, 6f, 8f, 6f);
                 pointsBox.Text = $"{row.RewardCost}";
-                pointsBox.Background = ms_TableControlBackground;
-                pointsBox.Foreground = ms_TableControlForeground;
-                pointsBox.BorderBrush = ms_TableControlBorderBrush;
-                pointsBox.BorderThickness = new Thickness(1f);
-                pointsBox.SnapsToDevicePixels = true;
-                pointsBox.UseLayoutRounding = true;
+                ApplyTableTextBoxStyle(pointsBox);
                 pointsBox.TextChanged += (sender, eventArgs) =>
                 {
                     row.RewardCost = int.TryParse(pointsBox.Text, out var cost) && cost > 0 ? cost : 0;
@@ -358,14 +391,9 @@ namespace ConfigApp.Tabs.Voting
                 {
                     Margin = new Thickness(8f, 6f, 8f, 6f),
                     Height = 28f,
-                    Text = GetSavedManagedRewardTitle(row),
-                    Background = ms_TableControlBackground,
-                    Foreground = ms_TableControlForeground,
-                    BorderBrush = ms_TableControlBorderBrush,
-                    BorderThickness = new Thickness(1f),
-                    SnapsToDevicePixels = true,
-                    UseLayoutRounding = true
+                    Text = GetSavedManagedRewardTitle(row)
                 };
+                ApplyTableTextBoxStyle(rewardTitleBox);
                 rewardTitleBox.TextChanged += (sender, eventArgs) =>
                 {
                     row.RewardTitle = rewardTitleBox.Text;
@@ -447,7 +475,173 @@ namespace ConfigApp.Tabs.Voting
                 removeButton.SetValue(Grid.ColumnProperty, 4);
                 rowGrid.Children.Add(removeButton);
 
-                m_ChannelPointMappingsPanel.Children.Add(rowGrid);
+                rowContainer.Children.Add(rowGrid);
+
+                var limitsGrid = new Grid()
+                {
+                    Margin = new Thickness(12f, 2f, 12f, 10f)
+                };
+                limitsGrid.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(220f) });
+                limitsGrid.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(150f) });
+                limitsGrid.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1f, GridUnitType.Star) });
+                for (var rowIndex = 0; rowIndex < 4; rowIndex++)
+                    limitsGrid.RowDefinitions.Add(new RowDefinition() { Height = GridLength.Auto });
+
+                var limitsToggle = new CheckBox()
+                {
+                    Content = "Enabled",
+                    IsChecked = row.UseCooldownAndLimits,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(8f, 0f, 0f, 0f)
+                };
+
+                var limitsExpanderHeader = new DockPanel()
+                {
+                    LastChildFill = false
+                };
+                var limitsHeaderText = new TextBlock()
+                {
+                    Text = "Cooldown & Limits",
+                    Foreground = ms_TableControlForeground,
+                    FontWeight = FontWeights.SemiBold,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                DockPanel.SetDock(limitsHeaderText, Dock.Left);
+                limitsExpanderHeader.Children.Add(limitsHeaderText);
+                DockPanel.SetDock(limitsToggle, Dock.Right);
+                limitsExpanderHeader.Children.Add(limitsToggle);
+
+                var limitsHelp = new TextBlock()
+                {
+                    Text = "Set any numeric field to 0 to leave that specific Twitch limit disabled. Cooldown is stored in whole minutes.",
+                    Foreground = ms_TableControlForegroundDisabled,
+                    Margin = new Thickness(0f, 0f, 0f, 8f),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                limitsHelp.SetValue(Grid.RowProperty, 0);
+                limitsHelp.SetValue(Grid.ColumnSpanProperty, 3);
+                limitsGrid.Children.Add(limitsHelp);
+
+                var cooldownLabel = new TextBlock()
+                {
+                    Text = "Redemption Cooldown (Minutes)",
+                    Foreground = ms_TableControlForeground,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0f, 0f, 12f, 8f)
+                };
+                cooldownLabel.SetValue(Grid.RowProperty, 1);
+                cooldownLabel.SetValue(Grid.ColumnProperty, 0);
+                limitsGrid.Children.Add(cooldownLabel);
+
+                var cooldownBox = Utils.GenerateCommonNumericOnlyTextBox(5, 140f, 28f);
+                cooldownBox.Margin = new Thickness(0f, 0f, 8f, 8f);
+                cooldownBox.Text = row.GlobalCooldownMinutes > 0 ? $"{row.GlobalCooldownMinutes}" : "0";
+                cooldownBox.TextChanged += (sender, eventArgs) =>
+                {
+                    row.GlobalCooldownMinutes = int.TryParse(cooldownBox.Text, out var minutes) && minutes > 0 ? minutes : 0;
+                };
+                cooldownBox.SetValue(Grid.RowProperty, 1);
+                cooldownBox.SetValue(Grid.ColumnProperty, 1);
+                limitsGrid.Children.Add(cooldownBox);
+
+                var cooldownHint = new TextBlock()
+                {
+                    Text = "Up to 10080 minutes (7 days).",
+                    Foreground = ms_TableControlForegroundDisabled,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0f, 0f, 0f, 8f)
+                };
+                cooldownHint.SetValue(Grid.RowProperty, 1);
+                cooldownHint.SetValue(Grid.ColumnProperty, 2);
+                limitsGrid.Children.Add(cooldownHint);
+
+                var maxPerStreamLabel = new TextBlock()
+                {
+                    Text = "Limit Redemptions Per Stream",
+                    Foreground = ms_TableControlForeground,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0f, 0f, 12f, 8f)
+                };
+                maxPerStreamLabel.SetValue(Grid.RowProperty, 2);
+                maxPerStreamLabel.SetValue(Grid.ColumnProperty, 0);
+                limitsGrid.Children.Add(maxPerStreamLabel);
+
+                var maxPerStreamBox = Utils.GenerateCommonNumericOnlyTextBox(6, 140f, 28f);
+                maxPerStreamBox.Margin = new Thickness(0f, 0f, 8f, 8f);
+                maxPerStreamBox.Text = row.MaxRedemptionsPerStream > 0 ? $"{row.MaxRedemptionsPerStream}" : "0";
+                maxPerStreamBox.TextChanged += (sender, eventArgs) =>
+                {
+                    row.MaxRedemptionsPerStream = int.TryParse(maxPerStreamBox.Text, out var maxPerStream) && maxPerStream > 0
+                        ? maxPerStream
+                        : 0;
+                };
+                maxPerStreamBox.SetValue(Grid.RowProperty, 2);
+                maxPerStreamBox.SetValue(Grid.ColumnProperty, 1);
+                limitsGrid.Children.Add(maxPerStreamBox);
+
+                var maxPerUserLabel = new TextBlock()
+                {
+                    Text = "Limit Redemptions Per User / Stream",
+                    Foreground = ms_TableControlForeground,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0f, 0f, 12f, 0f)
+                };
+                maxPerUserLabel.SetValue(Grid.RowProperty, 3);
+                maxPerUserLabel.SetValue(Grid.ColumnProperty, 0);
+                limitsGrid.Children.Add(maxPerUserLabel);
+
+                var maxPerUserBox = Utils.GenerateCommonNumericOnlyTextBox(6, 140f, 28f);
+                maxPerUserBox.Margin = new Thickness(0f, 0f, 8f, 0f);
+                maxPerUserBox.Text = row.MaxRedemptionsPerUserPerStream > 0 ? $"{row.MaxRedemptionsPerUserPerStream}" : "0";
+                maxPerUserBox.TextChanged += (sender, eventArgs) =>
+                {
+                    row.MaxRedemptionsPerUserPerStream = int.TryParse(maxPerUserBox.Text, out var maxPerUser) && maxPerUser > 0
+                        ? maxPerUser
+                        : 0;
+                };
+                maxPerUserBox.SetValue(Grid.RowProperty, 3);
+                maxPerUserBox.SetValue(Grid.ColumnProperty, 1);
+                limitsGrid.Children.Add(maxPerUserBox);
+
+                void UpdateCooldownAndLimitControls()
+                {
+                    row.UseCooldownAndLimits = limitsToggle.IsChecked == true;
+
+                    ApplyTableTextBoxStyle(cooldownBox, row.UseCooldownAndLimits);
+                    ApplyTableTextBoxStyle(maxPerStreamBox, row.UseCooldownAndLimits);
+                    ApplyTableTextBoxStyle(maxPerUserBox, row.UseCooldownAndLimits);
+
+                    var labelOpacity = row.UseCooldownAndLimits ? 1f : 0.65f;
+                    cooldownLabel.Opacity = labelOpacity;
+                    cooldownHint.Opacity = labelOpacity;
+                    maxPerStreamLabel.Opacity = labelOpacity;
+                    maxPerUserLabel.Opacity = labelOpacity;
+                    limitsHelp.Opacity = row.UseCooldownAndLimits ? 1f : 0.75f;
+                }
+
+                limitsToggle.Checked += (sender, eventArgs) => { UpdateCooldownAndLimitControls(); };
+                limitsToggle.Unchecked += (sender, eventArgs) => { UpdateCooldownAndLimitControls(); };
+                UpdateCooldownAndLimitControls();
+
+                var limitsExpander = new Expander()
+                {
+                    Header = limitsExpanderHeader,
+                    Content = limitsGrid,
+                    IsExpanded = row.IsCooldownAndLimitsExpanded,
+                    Margin = new Thickness(12f, 0f, 12f, 10f),
+                    Background = rowBackground
+                };
+                limitsExpander.Expanded += (sender, eventArgs) =>
+                {
+                    foreach (var otherRow in m_ChannelPointRewardRows)
+                        otherRow.IsCooldownAndLimitsExpanded = ReferenceEquals(otherRow, row);
+
+                    RenderChannelPointMappings();
+                };
+                limitsExpander.Collapsed += (sender, eventArgs) => { row.IsCooldownAndLimitsExpanded = false; };
+
+                rowContainer.Children.Add(limitsExpander);
+                m_ChannelPointMappingsPanel.Children.Add(rowContainer);
             }
 
             var footerRow = new DockPanel()
@@ -640,7 +834,11 @@ namespace ConfigApp.Tabs.Voting
                     RewardTitle = string.IsNullOrWhiteSpace(mapping.RewardTitle) ? null : mapping.RewardTitle,
                     RewardCost = mapping.RewardCost > 0 ? mapping.RewardCost : 1000,
                     Action = mapping.Action,
-                    EffectId = mapping.EffectId
+                    EffectId = mapping.EffectId,
+                    UseCooldownAndLimits = mapping.UseCooldownAndLimits,
+                    GlobalCooldownMinutes = ConvertCooldownSecondsToMinutes(mapping.GlobalCooldownSeconds),
+                    MaxRedemptionsPerStream = Math.Max(mapping.MaxRedemptionsPerStream, 0),
+                    MaxRedemptionsPerUserPerStream = Math.Max(mapping.MaxRedemptionsPerUserPerStream, 0)
                 });
 
                 var addedRow = m_ChannelPointRewardRows[^1];
@@ -677,7 +875,11 @@ namespace ConfigApp.Tabs.Voting
                     RewardTitle = GetSavedManagedRewardTitle(row),
                     RewardCost = row.RewardCost,
                     Action = row.Action,
-                    EffectId = row.Action == TwitchChannelPointActionType.TriggerEffect ? row.EffectId : null
+                    EffectId = row.Action == TwitchChannelPointActionType.TriggerEffect ? row.EffectId : null,
+                    UseCooldownAndLimits = row.UseCooldownAndLimits,
+                    GlobalCooldownSeconds = ConvertCooldownMinutesToSeconds(row.GlobalCooldownMinutes),
+                    MaxRedemptionsPerStream = Math.Max(row.MaxRedemptionsPerStream, 0),
+                    MaxRedemptionsPerUserPerStream = Math.Max(row.MaxRedemptionsPerUserPerStream, 0)
                 })
                 .ToList();
             OptionsManager.VotingFile.WriteValue("TwitchChannelPointRewardMappings", JArray.FromObject(mappings));

@@ -18,6 +18,7 @@ export class ChaosOverlayClient implements IChaosOverlayClient {
 	private disconnectEvent = new LiteEvent();
 	private endEvent = new LiteEvent<IChaosOverlayClientMessage>();
 	private noVoteRoundEvent = new LiteEvent<IChaosOverlayClientMessage>();
+	private statusEvent = new LiteEvent<IChaosOverlayClientMessage>();
 	private updateEvent = new LiteEvent<IChaosOverlayClientMessage>();
 
 	public constructor(URL: string) {
@@ -47,6 +48,9 @@ export class ChaosOverlayClient implements IChaosOverlayClient {
 	public addNoVotingRoundListener(listener: TChaosOverlayClientEvent): void {
 		this.noVoteRoundEvent.addEventListener(listener);
 	}
+	public addStatusListener(listener: TChaosOverlayClientEvent): void {
+		this.statusEvent.addEventListener(listener);
+	}
 	public addUpdateVoteListener(listener: TChaosOverlayClientEvent): void {
 		this.updateEvent.addEventListener(listener);
 	}
@@ -64,6 +68,9 @@ export class ChaosOverlayClient implements IChaosOverlayClient {
 	}
 	public removeNoVotingRoundListener(listener: TChaosOverlayClientEvent): void {
 		this.noVoteRoundEvent.removeEventListener(listener);
+	}
+	public removeStatusListener(listener: TChaosOverlayClientEvent): void {
+		this.statusEvent.removeEventListener(listener);
 	}
 	public removeUpdateVoteListener(listener: TChaosOverlayClientEvent): void {
 		this.updateEvent.removeEventListener(listener);
@@ -109,6 +116,7 @@ export class ChaosOverlayClient implements IChaosOverlayClient {
 	private onSocketMessage(message: MessageEvent): void {
 		try {
 			const MESSAGE: IChaosOverlayClientMessage = JSON.parse(message.data);
+			if (typeof MESSAGE.channelPointsEnabled === 'boolean') this.statusEvent.dispatch(MESSAGE);
 
 			switch (MESSAGE.request) {
 				case 'CREATE':
@@ -119,6 +127,8 @@ export class ChaosOverlayClient implements IChaosOverlayClient {
 					break;
 				case 'NO_VOTING_ROUND':
 					this.noVoteRoundEvent.dispatch(MESSAGE);
+					break;
+				case 'STATUS':
 					break;
 				case 'UPDATE':
 					this.updateEvent.dispatch(MESSAGE);

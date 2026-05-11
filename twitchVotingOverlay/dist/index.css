@@ -37,6 +37,45 @@ body {
 	width: var(--bar-width);
 }
 
+#channelPointsStatusContainer {
+	align-items: center;
+	display: flex;
+	height: 16px;
+	gap: 8px;
+	margin-top: 8px;
+	opacity: 1;
+	transition: opacity 150ms ease-in-out;
+	width: var(--bar-width);
+}
+
+	#channelPointsStatusContainer.hidden {
+		opacity: 0;
+	}
+
+#channelPointsStatusDot {
+	border-radius: 50%;
+	height: 12px;
+	transition: background-color 150ms ease-in-out;
+	width: 12px;
+}
+
+	#channelPointsStatusDot.active {
+		background-color: #33d17a;
+	}
+
+	#channelPointsStatusDot.paused {
+		background-color: #d64545;
+	}
+
+#channelPointsStatusLabel {
+	-webkit-text-stroke: var(--bar-text-outline-thickness) var(--bar-text-outline-color);
+	color: var(--bar-text-color);
+	font-family: var(--bar-font);
+	font-size: 11pt;
+	font-weight: var(--bar-font-weight);
+	letter-spacing: 0.02em;
+}
+
 #totalVotes {
 	-webkit-text-stroke: var(--text-outline-thickness) var(--text-outline-color);
 	color: var(--text-color);

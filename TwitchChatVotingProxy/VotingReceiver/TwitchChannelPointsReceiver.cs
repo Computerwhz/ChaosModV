@@ -18,6 +18,7 @@ namespace TwitchChatVotingProxy.VotingReceiver
         private const int STARTUP_TIMEOUT_MS = 15000;
         private const int MAX_REWARD_TITLE_LENGTH = 45;
         private const int MAX_REWARD_PROMPT_LENGTH = 200;
+        private const int MAX_GLOBAL_COOLDOWN_SECONDS = 604800;
         private const string DEFAULT_EFFECT_REWARD_PROMPT = "Immediately invoke this effect in the Chaos Mod.";
 
         private sealed class ManagedRewardDefinition
@@ -26,6 +27,10 @@ namespace TwitchChatVotingProxy.VotingReceiver
             public required string Title { get; init; }
             public required string Prompt { get; init; }
             public required int Cost { get; init; }
+            public required bool UseCooldownAndLimits { get; init; }
+            public required int GlobalCooldownSeconds { get; init; }
+            public required int MaxRedemptionsPerStream { get; init; }
+            public required int MaxRedemptionsPerUserPerStream { get; init; }
         }
 
         private sealed class ManagedRewardInfo
@@ -172,8 +177,7 @@ namespace TwitchChatVotingProxy.VotingReceiver
                     var existingReward = FindExistingManagedReward(desiredReward, existingRewards, usedRewardIds);
                     if (existingReward != null)
                     {
-                        await UpdateCustomReward(existingReward.Id, desiredReward.Title, desiredReward.Prompt, desiredReward.Cost,
-                            enabled: enabled, paused: paused, cancellationToken);
+                        await UpdateCustomReward(existingReward.Id, desiredReward, enabled: enabled, paused: paused, cancellationToken);
 
                         desiredReward.Mapping.RewardId = existingReward.Id;
                         retainedManagedRewardIds.Add(existingReward.Id);
@@ -253,12 +257,26 @@ namespace TwitchChatVotingProxy.VotingReceiver
                 titleOccurrences[baseTitle] = occurrence;
 
                 var title = BuildUniqueRewardTitle(baseTitle, occurrence);
+                var useCooldownAndLimits = mapping.UseCooldownAndLimits;
+                var globalCooldownSeconds = useCooldownAndLimits
+                    ? Math.Clamp(mapping.GlobalCooldownSeconds, 0, MAX_GLOBAL_COOLDOWN_SECONDS)
+                    : 0;
+                var maxRedemptionsPerStream = useCooldownAndLimits
+                    ? Math.Max(mapping.MaxRedemptionsPerStream, 0)
+                    : 0;
+                var maxRedemptionsPerUserPerStream = useCooldownAndLimits
+                    ? Math.Max(mapping.MaxRedemptionsPerUserPerStream, 0)
+                    : 0;
                 desiredRewards.Add(new ManagedRewardDefinition()
                 {
                     Mapping = mapping,
                     Title = title,
                     Prompt = BuildRewardPrompt(mapping),
-                    Cost = mapping.RewardCost
+                    Cost = mapping.RewardCost,
+                    UseCooldownAndLimits = useCooldownAndLimits,
+                    GlobalCooldownSeconds = globalCooldownSeconds,
+                    MaxRedemptionsPerStream = maxRedemptionsPerStream,
+                    MaxRedemptionsPerUserPerStream = maxRedemptionsPerUserPerStream
                 });
             }
 
@@ -370,7 +388,7 @@ namespace TwitchChatVotingProxy.VotingReceiver
         {
             var requestUri = $"{TWITCH_HELIX_BASE_URL}/channel_points/custom_rewards?broadcaster_id={Uri.EscapeDataString(m_BroadcasterUserId!)}";
             using var request = CreateHelixRequest(HttpMethod.Post, requestUri,
-                BuildRewardRequestBody(reward.Title, reward.Prompt, reward.Cost, enabled: true, paused: paused));
+                BuildRewardRequestBody(reward, enabled: true, paused: paused));
 
             var response = await m_HttpClient.SendAsync(request, cancellationToken);
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -387,12 +405,12 @@ namespace TwitchChatVotingProxy.VotingReceiver
                 ?? throw new InvalidOperationException("Twitch reward creation returned incomplete reward data.");
         }
 
-        private async Task UpdateCustomReward(string rewardId, string title, string prompt, int cost, bool enabled, bool paused,
+        private async Task UpdateCustomReward(string rewardId, ManagedRewardDefinition reward, bool enabled, bool paused,
             CancellationToken cancellationToken)
         {
             var requestUri = $"{TWITCH_HELIX_BASE_URL}/channel_points/custom_rewards?broadcaster_id={Uri.EscapeDataString(m_BroadcasterUserId!)}&id={Uri.EscapeDataString(rewardId)}";
             using var request = CreateHelixRequest(HttpMethod.Patch, requestUri,
-                BuildRewardRequestBody(title, prompt, cost, enabled, paused));
+                BuildRewardRequestBody(reward, enabled, paused));
 
             var response = await m_HttpClient.SendAsync(request, cancellationToken);
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -499,15 +517,25 @@ namespace TwitchChatVotingProxy.VotingReceiver
             return request;
         }
 
-        private static JObject BuildRewardRequestBody(string title, string prompt, int cost, bool enabled, bool paused)
+        private static JObject BuildRewardRequestBody(ManagedRewardDefinition reward, bool enabled, bool paused)
         {
+            var isGlobalCooldownEnabled = reward.UseCooldownAndLimits && reward.GlobalCooldownSeconds > 0;
+            var isMaxPerStreamEnabled = reward.UseCooldownAndLimits && reward.MaxRedemptionsPerStream > 0;
+            var isMaxPerUserPerStreamEnabled = reward.UseCooldownAndLimits && reward.MaxRedemptionsPerUserPerStream > 0;
+
             return new JObject()
             {
-                ["title"] = title,
-                ["prompt"] = prompt,
-                ["cost"] = cost,
+                ["title"] = reward.Title,
+                ["prompt"] = reward.Prompt,
+                ["cost"] = reward.Cost,
                 ["is_enabled"] = enabled,
                 ["is_paused"] = paused,
+                ["is_global_cooldown_enabled"] = isGlobalCooldownEnabled,
+                ["global_cooldown_seconds"] = isGlobalCooldownEnabled ? reward.GlobalCooldownSeconds : 0,
+                ["is_max_per_stream_enabled"] = isMaxPerStreamEnabled,
+                ["max_per_stream"] = isMaxPerStreamEnabled ? reward.MaxRedemptionsPerStream : 0,
+                ["is_max_per_user_per_stream_enabled"] = isMaxPerUserPerStreamEnabled,
+                ["max_per_user_per_stream"] = isMaxPerUserPerStreamEnabled ? reward.MaxRedemptionsPerUserPerStream : 0,
                 ["should_redemptions_skip_request_queue"] = false
             };
         }

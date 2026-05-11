@@ -20,5 +20,11 @@
         /// </summary>
         /// <param name="votes"></param>
         void UpdateVoting(List<IVoteOption> votes);
+        /// <summary>
+        /// Informs the overlay about the managed Twitch channel point status
+        /// </summary>
+        /// <param name="enabled">Whether channel points are enabled in config</param>
+        /// <param name="paused">Whether the configured rewards are currently paused</param>
+        void SetChannelPointsStatus(bool enabled, bool paused);
     }
 }
